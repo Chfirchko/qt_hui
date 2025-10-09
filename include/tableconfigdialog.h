@@ -2,11 +2,19 @@
 #define TABLECONFIGDIALOG_H
 
 #include <QDialog>
+#include <QList>
+#include <QVBoxLayout>  // ДОБАВИТЬ ЭТОТ INCLUDE
+#include <QHBoxLayout>  // ДОБАВИТЬ ЭТОТ INCLUDE
+#include "configmanager.h"
 
 class QSpinBox;
 class QFormLayout;
 class QLineEdit;
 class QDialogButtonBox;
+class QLabel;
+class QTextEdit;
+class QScrollArea;
+class QFrame;
 
 class TableConfigDialog : public QDialog
 {
@@ -17,7 +25,10 @@ public:
     
     int getColumnCount() const;
     QStringList getColumnNames() const;
-    int getRowCount() const;
+    QList<int> getCellCounts() const;
+    QList<ColumnConfig> getColumnsConfig() const;
+    
+    void setConfigData(const QList<ColumnConfig>& columns);
 
 private slots:
     void updateColumnInputs(int count);
@@ -25,13 +36,22 @@ private slots:
 
 private:
     void setupUI();
+    void setupColumnUI(int index, const ColumnConfig* config = nullptr);
 
     QSpinBox *columnCountSpinBox;
-    QSpinBox *rowCountSpinBox;
-    QFormLayout *columnNamesLayout;
+    QVBoxLayout *columnsContainerLayout;
     QDialogButtonBox *buttonBox;
-    QVector<QLineEdit*> columnNameInputs;
-    QStringList columnNames;
+    
+    struct ColumnWidgets {
+        QLineEdit* nameEdit;
+        QSpinBox* cellCountSpin;
+        QList<QTextEdit*> cellEdits;
+        QWidget* columnWidget;
+        QVBoxLayout* cellsLayout;
+    };
+    
+    QVector<ColumnWidgets> columnWidgets;
+    QList<ColumnConfig> columnsConfig;
 };
 
 #endif // TABLECONFIGDIALOG_H

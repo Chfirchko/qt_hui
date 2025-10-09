@@ -2,9 +2,14 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
-#include <QTableWidget>
+#include <QFrame>
+#include <QVBoxLayout>
+#include <QList>
+#include "configmanager.h"
 
 class QPushButton;
+class QScrollArea;
+class QWidget;
 
 class MainWindow : public QMainWindow
 {
@@ -16,14 +21,21 @@ public:
 
 private slots:
     void showConfigDialog();
-    void createTable(int columnCount, const QStringList &columnNames, int rowCount);
+    void createLayoutFromConfig();
+    void loadConfig();
+    void saveConfig();
 
 private:
     void setupUI();
+    void clearLayout(QLayout* layout);
+    void setupMenu();
 
-    QTableWidget *tableWidget;
-    QPushButton *configButton;
     QWidget *centralWidget;
+    QPushButton *configButton;
+    QScrollArea *scrollArea;
+    QWidget *contentWidget;
+    QHBoxLayout *mainLayout;
+    ConfigManager *configManager;
 };
 
 #endif // MAINWINDOW_H

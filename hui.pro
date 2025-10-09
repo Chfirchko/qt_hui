@@ -14,8 +14,16 @@ QT += core gui widgets
 #DEFINES += QT_DISABLE_DEPRECATED_UP_TO=0x060000 # disables all APIs deprecated in Qt 6.0.0 and earlier
 
 # Input
-HEADERS += include/mainwindow.h include/tableconfigdialog.h
-SOURCES += src/main.cpp src/mainwindow.cpp src/tablecofigdialog.cpp
+SOURCES += \
+    src/main.cpp \
+    src/mainwindow.cpp \
+    src/tableconfigdialog.cpp \
+    src/configmanager.cpp
+
+HEADERS += \
+    include/mainwindow.h \
+    include/tableconfigdialog.h \
+    include/configmanager.h
 DEPENDPATH += include
 
 # Или можно указать несколько путей
