@@ -12,38 +12,96 @@
 #include <QAction>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QTextEdit>
+#include <QMouseEvent>
+#include <QDebug>
+
+// Кастомный виджет ячейки с поддержкой кликов
+class ClickableFrame : public QFrame
+{
+    Q_OBJECT
+public:
+    ClickableFrame(int col, int cell, const QList<int>& subCellPath, QWidget* parent = nullptr)
+        : QFrame(parent), m_col(col), m_cell(cell), m_subCellPath(subCellPath) 
+    {
+        setCursor(Qt::PointingHandCursor);
+    }
+
+signals:
+    void clicked(int col, int cell, const QList<int>& subCellPath);
+
+protected:
+    void mousePressEvent(QMouseEvent* event) override {
+        if (event->button() == Qt::LeftButton) {
+            emit clicked(m_col, m_cell, m_subCellPath);
+        }
+        QFrame::mousePressEvent(event);
+    }
+
+private:
+    int m_col;
+    int m_cell;
+    QList<int> m_subCellPath;
+};
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
-    , centralWidget(nullptr)
+    // УДАЛИТЕ centralWidget из списка инициализации
     , configButton(nullptr)
     , scrollArea(nullptr)
     , contentWidget(nullptr)
     , mainLayout(nullptr)
     , configManager(new ConfigManager(this))
+    , cellInfoDisplay(nullptr)
 {
     setupUI();
     setupMenu();
+    
+    // Автоматически загружаем конфиг при старте, если он существует
+    if (configManager->configExists()) {
+        qDebug() << "Автоматически загружен конфиг:" << configManager->getConfigPath();
+    } else {
+        qDebug() << "Используется конфиг по умолчанию";
+    }
 }
 
 MainWindow::~MainWindow()
 {
+    // Явная очистка, если нужна
+    if (configManager) {
+        configManager->deleteLater();
+    }
 }
+
 
 void MainWindow::setupUI()
 {
-    centralWidget = new QWidget(this);
-    setCentralWidget(centralWidget);
+    // Создаем центральный виджет
+    QWidget *centralWgt = new QWidget(this);
+    setCentralWidget(centralWgt);
 
-    auto *layout = new QVBoxLayout(centralWidget);
+    auto *mainVLayout = new QVBoxLayout(centralWgt);
 
-    // Кнопка для настройки
+    // Верхняя панель с кнопками
+    auto *topPanel = new QHBoxLayout;
+    
     configButton = new QPushButton("Настроить разделение", this);
-    layout->addWidget(configButton);
-    connect(configButton, &QPushButton::clicked,
-            this, &MainWindow::showConfigDialog);
+    topPanel->addWidget(configButton);
+    
+    auto *loadButton = new QPushButton("Загрузить конфиг", this);
+    topPanel->addWidget(loadButton);
+    
+    auto *saveButton = new QPushButton("Сохранить конфиг", this);
+    topPanel->addWidget(saveButton);
+    
+    topPanel->addStretch();
+    
+    mainVLayout->addLayout(topPanel);
 
-    // Область с прокруткой для контента
+    // Основная область с разделением
+    auto *contentSplitter = new QHBoxLayout;
+    
+    // Левая часть - скроллируемая область с колонками
     scrollArea = new QScrollArea(this);
     scrollArea->setWidgetResizable(true);
     
@@ -53,12 +111,25 @@ void MainWindow::setupUI()
     mainLayout->setContentsMargins(2, 2, 2, 2);
     scrollArea->setWidget(contentWidget);
     
-    layout->addWidget(scrollArea);
+    contentSplitter->addWidget(scrollArea, 3); // 3/4 ширины
+    
+    // Правая часть - информация о выбранной ячейке
+    cellInfoDisplay = new QTextEdit(this);
+    cellInfoDisplay->setReadOnly(true);
+    cellInfoDisplay->setPlaceholderText("Выберите ячейку для просмотра информации...");
+    cellInfoDisplay->setMaximumWidth(300);
+    contentSplitter->addWidget(cellInfoDisplay, 1); // 1/4 ширины
+    
+    mainVLayout->addLayout(contentSplitter);
 
-    // Создаем layout из конфига по умолчанию
+    // Связываем кнопки
+    connect(configButton, &QPushButton::clicked, this, &MainWindow::showConfigDialog);
+    connect(loadButton, &QPushButton::clicked, this, &MainWindow::loadConfig);
+    connect(saveButton, &QPushButton::clicked, this, &MainWindow::saveConfig);
+
+    // Создаем layout из конфига
     createLayoutFromConfig();
 }
-
 void MainWindow::setupMenu()
 {
     QMenu *fileMenu = menuBar()->addMenu("Файл");
@@ -72,7 +143,6 @@ void MainWindow::setupMenu()
     connect(loadAction, &QAction::triggered, this, &MainWindow::loadConfig);
     connect(saveAction, &QAction::triggered, this, &MainWindow::saveConfig);
 }
-
 void MainWindow::showConfigDialog()
 {
     TableConfigDialog dialog(this);
@@ -81,7 +151,127 @@ void MainWindow::showConfigDialog()
     if (dialog.exec() == QDialog::Accepted) {
         configManager->setColumns(dialog.getColumnsConfig());
         createLayoutFromConfig();
+        
+        // Автоматически сохраняем конфиг после редактирования
+        if (configManager->saveConfig("config.json")) {
+            qDebug() << "Конфиг автоматически сохранен";
+        }
     }
+}
+
+QWidget* MainWindow::createCellWidget(const CellInfo& cellInfo, int colIndex, int cellIndex, const QList<int>& parentPath)
+{
+
+    qDebug() << "Создание ячейки:" << colIndex << cellIndex << "content:" << cellInfo.content << "value:" << cellInfo.value << "unit:" << cellInfo.unit;
+    QList<int> currentPath = parentPath;
+    currentPath << cellIndex;
+    
+    ClickableFrame* cellFrame = new ClickableFrame(colIndex, cellIndex, currentPath);
+    cellFrame->setFrameStyle(QFrame::Panel | QFrame::Sunken);
+    cellFrame->setLineWidth(2);
+    cellFrame->setStyleSheet("QFrame { "
+                           "background-color: #f8f8f8; "
+                           "border: 2px solid #a0a0a0; "
+                           "border-top: 2px solid #606060; "
+                           "border-left: 2px solid #606060; "
+                           "} "
+                           "QFrame:hover { background-color: #e8e8e8; }");
+    
+    QVBoxLayout* cellLayout = new QVBoxLayout(cellFrame);
+    cellLayout->setSpacing(4);
+    cellLayout->setContentsMargins(8, 8, 8, 8);
+    
+    // Основное содержимое ячейки с значением
+    QHBoxLayout* mainContentLayout = new QHBoxLayout;
+    
+    QLabel* cellLabel = new QLabel(cellInfo.content);
+    cellLabel->setWordWrap(true);
+    mainContentLayout->addWidget(cellLabel, 1);
+    
+    // Отображаем значение, если оно есть
+    QString displayValue = cellInfo.value;
+    if (!displayValue.isEmpty() && !cellInfo.unit.isEmpty()) {
+        displayValue += " " + cellInfo.unit;
+    }
+    
+    if (!displayValue.isEmpty()) {
+        QLabel* valueLabel = new QLabel(displayValue);
+        valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        mainContentLayout->addWidget(valueLabel);
+    }
+    
+    cellLayout->addLayout(mainContentLayout);
+    
+    // Если есть подъячейки, отображаем их ВЕРТИКАЛЬНО
+    if (!cellInfo.subCells.isEmpty()) {
+        QFrame* subCellsFrame = new QFrame;
+        subCellsFrame->setFrameStyle(QFrame::Box);
+        subCellsFrame->setLineWidth(2);
+        subCellsFrame->setStyleSheet("QFrame { "
+                                   "background-color: #f0f0f0; "
+                                   "border: 2px solid #909090; "
+                                   "border-top: 2px solid #505050; "
+                                   "border-left: 2px solid #505050; "
+                                   "}");
+        
+        QVBoxLayout* subCellsLayout = new QVBoxLayout(subCellsFrame);
+        subCellsLayout->setSpacing(2);
+        subCellsLayout->setContentsMargins(4, 4, 4, 4);
+        
+        for (int i = 0; i < cellInfo.subCells.size(); ++i) {
+            QWidget* subCellWidget = createSubCellWidget(cellInfo.subCells[i], colIndex, i, currentPath);
+            subCellsLayout->addWidget(subCellWidget);
+        }
+        
+        cellLayout->addWidget(subCellsFrame);
+    }
+    
+    // Связываем клик
+    connect(cellFrame, &ClickableFrame::clicked, this, &MainWindow::onCellClicked);
+    
+    return cellFrame;
+}
+
+QWidget* MainWindow::createSubCellWidget(const CellInfo& cellInfo, int colIndex, int subCellIndex, const QList<int>& parentPath)
+{
+    QList<int> currentPath = parentPath;
+    currentPath << subCellIndex;
+    
+    ClickableFrame* subCellFrame = new ClickableFrame(colIndex, subCellIndex, currentPath);
+    subCellFrame->setFrameStyle(QFrame::Panel | QFrame::Sunken);
+    subCellFrame->setLineWidth(1);
+    subCellFrame->setStyleSheet("QFrame { "
+                              "background-color: #f0f0f0; "
+                              "border: 1px solid #808080; "
+                              "border-top: 1px solid #404040; "
+                              "border-left: 1px solid #404040; "
+                              "} "
+                              "QFrame:hover { background-color: #e0e0e0; }");
+    
+    QHBoxLayout* subCellLayout = new QHBoxLayout(subCellFrame);
+    subCellLayout->setContentsMargins(6, 4, 6, 4);
+    
+    // Название подъячейки
+    QLabel* subCellLabel = new QLabel(cellInfo.content);
+    subCellLabel->setWordWrap(true);
+    subCellLayout->addWidget(subCellLabel, 1);
+    
+    // Значение подъячейки
+    QString displayValue = cellInfo.value;
+    if (!displayValue.isEmpty() && !cellInfo.unit.isEmpty()) {
+        displayValue += " " + cellInfo.unit;
+    }
+    
+    if (!displayValue.isEmpty()) {
+        QLabel* valueLabel = new QLabel(displayValue);
+        valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        subCellLayout->addWidget(valueLabel);
+    }
+    
+    // Связываем клик
+    connect(subCellFrame, &ClickableFrame::clicked, this, &MainWindow::onCellClicked);
+    
+    return subCellFrame;
 }
 
 void MainWindow::loadConfig()
@@ -99,7 +289,7 @@ void MainWindow::loadConfig()
 
 void MainWindow::saveConfig()
 {
-    QString filename = QFileDialog::getSaveFileName(this, "Сохранить конфигурацию", "", "JSON Files (*.json)");
+    QString filename = QFileDialog::getSaveFileName(this, "Сохранить конфигурацию", "config.json", "JSON Files (*.json)");
     if (!filename.isEmpty()) {
         if (configManager->saveConfig(filename)) {
             QMessageBox::information(this, "Успех", "Конфигурация сохранена успешно!");
@@ -137,37 +327,38 @@ void MainWindow::createLayoutFromConfig()
         // Создаем фрейм для колонки
         QFrame *columnFrame = new QFrame;
         columnFrame->setFrameStyle(QFrame::Box | QFrame::Raised);
-        columnFrame->setLineWidth(2);
+        columnFrame->setLineWidth(3);
+        columnFrame->setStyleSheet("QFrame { "
+                                 "background-color: #e8e8e8; "
+                                 "border: 3px solid #707070; "
+                                 "border-top: 3px solid #303030; "
+                                 "border-left: 3px solid #303030; "
+                                 "}");
         
         // Вертикальный layout для колонки
         QVBoxLayout *columnLayout = new QVBoxLayout(columnFrame);
-        columnLayout->setSpacing(2);
-        columnLayout->setContentsMargins(2, 2, 2, 2);
+        columnLayout->setSpacing(4);
+        columnLayout->setContentsMargins(4, 4, 4, 4);
         
-        // Заголовок колонки
+        // Заголовок колонки - ОСТАВЛЯЕМ ЖИРНЫЙ ШРИФТ
         QLabel *titleLabel = new QLabel(columnConfig.name);
         titleLabel->setAlignment(Qt::AlignCenter);
-        titleLabel->setStyleSheet("QLabel { background-color: #e0e0e0; padding: 8px; font-weight: bold; border: 1px solid #a0a0a0; }");
-        titleLabel->setMinimumHeight(30);
+        titleLabel->setStyleSheet("QLabel { "
+                                "background-color: #d0d0d0; "
+                                "padding: 10px; "
+                                "font-weight: bold; " // ОСТАВЛЯЕМ ЖИРНЫЙ ТОЛЬКО ЗДЕСЬ
+                                "font-size: 14px; "
+                                "border: 2px solid #606060; "
+                                "border-top: 2px solid #202020; "
+                                "border-left: 2px solid #202020; "
+                                "}");
+        titleLabel->setMinimumHeight(40);
         columnLayout->addWidget(titleLabel);
         
         // Создаем ячейки в колонке
         for (int cell = 0; cell < columnConfig.cellCount && cell < columnConfig.cells.size(); ++cell) {
-            QFrame *cellFrame = new QFrame;
-            cellFrame->setFrameStyle(QFrame::Panel | QFrame::Sunken);
-            cellFrame->setLineWidth(1);
-            cellFrame->setMinimumHeight(80);
-            cellFrame->setStyleSheet("QFrame { background-color: #f8f8f8; }");
-            
-            QVBoxLayout *cellLayout = new QVBoxLayout(cellFrame);
-            cellLayout->setContentsMargins(5, 5, 5, 5);
-            
-            QLabel *cellLabel = new QLabel(columnConfig.cells[cell].content);
-            cellLabel->setAlignment(Qt::AlignCenter);
-            cellLabel->setWordWrap(true);
-            
-            cellLayout->addWidget(cellLabel);
-            columnLayout->addWidget(cellFrame);
+            QWidget* cellWidget = createCellWidget(columnConfig.cells[cell], col, cell);
+            columnLayout->addWidget(cellWidget);
         }
         
         // Добавляем растягивающее пространство в конец колонки
@@ -177,3 +368,79 @@ void MainWindow::createLayoutFromConfig()
         mainLayout->addWidget(columnFrame, 1);
     }
 }
+
+void MainWindow::onCellClicked(int col, int cell, const QList<int>& subCellPath)
+{
+    qDebug() << "Клик по ячейке:" << col << cell << "путь:" << subCellPath;
+    
+    // Находим содержимое ячейки по пути
+    if (col < configManager->getColumns().size()) {
+        const ColumnConfig column = configManager->getColumns()[col];
+        
+        const CellInfo* currentCell = nullptr;
+        QString pathDescription = QString("Колонка: %1").arg(col + 1);
+        QString cellName = "";
+        
+        if (subCellPath.size() == 1) {
+            // Клик на основную ячейку
+            if (cell < column.cells.size()) {
+                currentCell = &column.cells[cell];
+                cellName = currentCell->content;
+                pathDescription += QString(" → Ячейка: %1").arg(cell + 1);
+            }
+        } else {
+            // Клик на подъячейку
+            if (subCellPath[0] < column.cells.size()) {
+                currentCell = &column.cells[subCellPath[0]];
+                pathDescription += QString(" → Ячейка: %1").arg(subCellPath[0] + 1);
+                cellName = currentCell->content;
+                
+                // Проходим по пути подъячеек
+                for (int i = 1; i < subCellPath.size(); i++) {
+                    int subIndex = subCellPath[i];
+                    if (subIndex < currentCell->subCells.size()) {
+                        currentCell = &currentCell->subCells[subIndex];
+                        pathDescription += QString(" → Подъячейка: %1").arg(subIndex + 1);
+                        cellName = currentCell->content;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (currentCell) {
+            showCellInfo(pathDescription, cellName, *currentCell);
+        }
+    }
+}
+
+void MainWindow::showCellInfo(const QString& pathDescription, const QString& cellName, const CellInfo& cellInfo)
+{
+    QString infoText;
+    infoText += pathDescription + "\n\n";
+    infoText += QString("Название: %1\n").arg(cellName);
+    
+    QString displayValue = cellInfo.value;
+    if (!displayValue.isEmpty() && !cellInfo.unit.isEmpty()) {
+        displayValue += " " + cellInfo.unit;
+    }
+    
+    if (!displayValue.isEmpty()) {
+        infoText += QString("Значение: %1\n").arg(displayValue);
+    }
+    
+    if (!cellInfo.subCells.isEmpty()) {
+        infoText += QString("\nПодъячеек: %1").arg(cellInfo.subCells.size());
+        for (int i = 0; i < cellInfo.subCells.size(); ++i) {
+            QString subDisplayValue = cellInfo.subCells[i].value;
+            if (!subDisplayValue.isEmpty() && !cellInfo.subCells[i].unit.isEmpty()) {
+                subDisplayValue += " " + cellInfo.subCells[i].unit;
+            }
+            infoText += QString("\n- %1: %2").arg(cellInfo.subCells[i].content).arg(subDisplayValue);
+        }
+    }
+    
+    cellInfoDisplay->setPlainText(infoText);
+}
+#include "mainwindow.moc"

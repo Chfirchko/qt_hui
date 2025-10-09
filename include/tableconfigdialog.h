@@ -3,8 +3,8 @@
 
 #include <QDialog>
 #include <QList>
-#include <QVBoxLayout>  // ДОБАВИТЬ ЭТОТ INCLUDE
-#include <QHBoxLayout>  // ДОБАВИТЬ ЭТОТ INCLUDE
+#include <QVBoxLayout>
+#include <QHBoxLayout>
 #include "configmanager.h"
 
 class QSpinBox;

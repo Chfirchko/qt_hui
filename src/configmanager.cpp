@@ -4,10 +4,35 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QDir>
+#include <QCoreApplication>
 
 ConfigManager::ConfigManager(QObject *parent) : QObject(parent)
 {
+    // Пытаемся найти конфиг в разных местах
+    QStringList possiblePaths = {
+        "/home/asswecan/Download/hui/build/config.json",
+        "../config.json", 
+        "../../config.json",
+        QCoreApplication::applicationDirPath() + "/config.json"
+    };
+    
+    for (const QString& path : possiblePaths) {
+        if (QFile::exists(path)) {
+            qDebug() << "Найден конфиг по пути:" << path;
+            if (loadConfig(path)) {
+                return;
+            }
+        }
+    }
+    
+    qWarning() << "Конфиг не найден, используется конфиг по умолчанию";
     createDefaultConfig();
+}
+
+bool ConfigManager::configExists() const
+{
+    return QFile::exists(configPath);
 }
 
 bool ConfigManager::loadConfig(const QString& filename)
@@ -20,6 +45,8 @@ bool ConfigManager::loadConfig(const QString& filename)
 
     QByteArray data = file.readAll();
     file.close();
+
+    qDebug() << "Содержимое файла" << filename << ":" << data;
 
     QJsonDocument doc = QJsonDocument::fromJson(data);
     if (doc.isNull()) {
@@ -42,7 +69,22 @@ bool ConfigManager::loadConfig(const QString& filename)
         }
     }
 
+    configPath = filename;
     qDebug() << "Конфигурация загружена. Колонок:" << columns.size();
+    
+    // Отладочный вывод
+    for (int i = 0; i < columns.size(); ++i) {
+        qDebug() << "Колонка" << i << ":" << columns[i].name;
+        for (int j = 0; j < columns[i].cells.size(); ++j) {
+            qDebug() << "  Ячейка" << j << ":" << columns[i].cells[j].content 
+                     << "Значение:" << columns[i].cells[j].value;
+            for (int k = 0; k < columns[i].cells[j].subCells.size(); ++k) {
+                qDebug() << "    Подъячейка" << k << ":" << columns[i].cells[j].subCells[k].content
+                         << "Значение:" << columns[i].cells[j].subCells[k].value;
+            }
+        }
+    }
+    
     return true;
 }
 
@@ -89,6 +131,36 @@ QList<int> ConfigManager::getCellCounts() const
     return counts;
 }
 
+bool ConfigManager::updateCellValue(int columnIndex, int cellIndex, const QString& value)
+{
+    if (columnIndex >= 0 && columnIndex < columns.size() &&
+        cellIndex >= 0 && cellIndex < columns[columnIndex].cells.size()) {
+        columns[columnIndex].cells[cellIndex].value = value;
+        return true;
+    }
+    return false;
+}
+
+bool ConfigManager::updateSubCellValue(int columnIndex, int cellIndex, int subCellIndex, const QString& value)
+{
+    if (columnIndex >= 0 && columnIndex < columns.size() &&
+        cellIndex >= 0 && cellIndex < columns[columnIndex].cells.size() &&
+        subCellIndex >= 0 && subCellIndex < columns[columnIndex].cells[cellIndex].subCells.size()) {
+        columns[columnIndex].cells[cellIndex].subCells[subCellIndex].value = value;
+        return true;
+    }
+    return false;
+}
+
+QString ConfigManager::getCellValue(int columnIndex, int cellIndex) const
+{
+    if (columnIndex >= 0 && columnIndex < columns.size() &&
+        cellIndex >= 0 && cellIndex < columns[columnIndex].cells.size()) {
+        return columns[columnIndex].cells[cellIndex].value;
+    }
+    return QString();
+}
+
 void ConfigManager::setColumns(const QList<ColumnConfig>& newColumns)
 {
     columns = newColumns;
@@ -108,21 +180,35 @@ void ConfigManager::createDefaultConfig()
     columns.clear();
 
     ColumnConfig col1;
-    col1.name = "Колонка 1";
-    col1.cellCount = 3;
+    col1.name = "ЦОС";
+    col1.cellCount = 6;
     for (int i = 0; i < col1.cellCount; ++i) {
-        col1.cells.append(CellInfo{QString("Содержимое %1-1").arg(i + 1)});
+        CellInfo cell;
+        cell.content = QString("Содержимое %1-1").arg(i + 1);
+        // Добавляем подъячейки для демонстрации
+        if (i == 0) {
+            CellInfo subCell1;
+            subCell1.content = "Подъячейка 1-1";
+            subCell1.value = "0.0 В";
+            subCell1.unit = "В";
+            CellInfo subCell2;
+            subCell2.content = "Подъячейка 1-2";
+            subCell2.value = "0.0 В";
+            subCell2.unit = "В";
+            cell.subCells << subCell1 << subCell2;
+        }
+        col1.cells.append(cell);
     }
 
     ColumnConfig col2;
-    col2.name = "Колонка 2";
-    col2.cellCount = 4;
+    col2.name = "ВИП";
+    col2.cellCount = 5;
     for (int i = 0; i < col2.cellCount; ++i) {
         col2.cells.append(CellInfo{QString("Содержимое %1-2").arg(i + 1)});
     }
 
     ColumnConfig col3;
-    col3.name = "Колонка 3";
+    col3.name = "ПП";
     col3.cellCount = 2;
     for (int i = 0; i < col3.cellCount; ++i) {
         col3.cells.append(CellInfo{QString("Содержимое %1-3").arg(i + 1)});
@@ -142,17 +228,10 @@ ColumnConfig ConfigManager::columnFromJson(const QJsonObject& json)
         QJsonArray cellsArray = json["cells"].toArray();
         for (const QJsonValue& cellValue : cellsArray) {
             if (cellValue.isObject()) {
-                QJsonObject cellObj = cellValue.toObject();
-                CellInfo cell;
-                cell.content = cellObj["content"].toString();
+                CellInfo cell = cellFromJson(cellValue.toObject());
                 column.cells.append(cell);
             }
         }
-    }
-
-    // Если cells не указаны, создаем пустые
-    while (column.cells.size() < column.cellCount) {
-        column.cells.append(CellInfo{QString("Ячейка %1").arg(column.cells.size() + 1)});
     }
 
     return column;
@@ -166,11 +245,86 @@ QJsonObject ConfigManager::columnToJson(const ColumnConfig& column) const
 
     QJsonArray cellsArray;
     for (const CellInfo& cell : column.cells) {
-        QJsonObject cellObj;
-        cellObj["content"] = cell.content;
-        cellsArray.append(cellObj);
+        cellsArray.append(cellToJson(cell));
     }
     json["cells"] = cellsArray;
+
+    return json;
+}
+
+CellInfo ConfigManager::cellFromJson(const QJsonObject& json)
+{
+    CellInfo cell;
+    cell.content = json["content"].toString();
+    
+    // Правильно загружаем value и unit для основной ячейки
+    if (json.contains("value")) {
+        cell.value = json["value"].toString();
+    } else {
+        cell.value = ""; // Пустая строка если значения нет
+    }
+    
+    if (json.contains("unit")) {
+        cell.unit = json["unit"].toString();
+    } else {
+        cell.unit = "";
+    }
+
+    qDebug() << "Загружена ячейка:" << cell.content << "value:" << cell.value << "unit:" << cell.unit;
+
+    // Загружаем подъячейки
+    if (json.contains("subCells") && json["subCells"].isArray()) {
+        QJsonArray subCellsArray = json["subCells"].toArray();
+        qDebug() << "  Найдено подъячеек:" << subCellsArray.size();
+        
+        for (const QJsonValue& subCellValue : subCellsArray) {
+            if (subCellValue.isObject()) {
+                QJsonObject subCellObj = subCellValue.toObject();
+                CellInfo subCell;
+                subCell.content = subCellObj["content"].toString();
+                
+                if (subCellObj.contains("value")) {
+                    subCell.value = subCellObj["value"].toString();
+                } else {
+                    subCell.value = "";
+                }
+                
+                if (subCellObj.contains("unit")) {
+                    subCell.unit = subCellObj["unit"].toString();
+                } else {
+                    subCell.unit = "";
+                }
+                
+                qDebug() << "  Загружена подъячейка:" << subCell.content << "value:" << subCell.value << "unit:" << subCell.unit;
+                cell.subCells.append(subCell);
+            }
+        }
+    }
+
+    return cell;
+}
+
+QJsonObject ConfigManager::cellToJson(const CellInfo& cell) const
+{
+    QJsonObject json;
+    json["content"] = cell.content;
+    
+    if (!cell.value.isEmpty()) {
+        json["value"] = cell.value;
+    }
+    
+    if (!cell.unit.isEmpty()) {
+        json["unit"] = cell.unit;
+    }
+
+    QJsonArray subCellsArray;
+    for (const CellInfo& subCell : cell.subCells) {
+        subCellsArray.append(cellToJson(subCell));
+    }
+    
+    if (!subCellsArray.isEmpty()) {
+        json["subCells"] = subCellsArray;
+    }
 
     return json;
 }
