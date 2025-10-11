@@ -6,7 +6,8 @@
 #include <QVBoxLayout>
 #include <QList>
 #include "configmanager.h"
-
+#include <QTimer>
+#include <temperaturegause.h>
 class QPushButton;
 class QScrollArea;
 class QWidget;
@@ -27,6 +28,7 @@ private slots:
     void loadConfig();
     void saveConfig();
     void onCellClicked(int col, int cell, const QList<int>& subCellPath);
+        void updateTemperatureGauges();
 
 private:
     void setupUI();
@@ -40,7 +42,8 @@ private:
     QWidget *contentWidget;
     QHBoxLayout *mainLayout;
     ConfigManager *configManager;
-    
+        QVector<TemperatureGauge*> temperatureGauges;
+    QTimer *updateTimer;
     // Окно для отображения информации о ячейке
     QTextEdit *cellInfoDisplay;
 };

@@ -23,7 +23,8 @@ SOURCES += \
 HEADERS += \
     include/mainwindow.h \
     include/tableconfigdialog.h \
-    include/configmanager.h
+    include/configmanager.h \
+    include/temperaturegause.h
 DEPENDPATH += include
 
 # Или можно указать несколько путей

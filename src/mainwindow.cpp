@@ -1,6 +1,6 @@
 #include "mainwindow.h"
 #include "tableconfigdialog.h"
-
+#include "temperaturegause.h"
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -15,6 +15,10 @@
 #include <QTextEdit>
 #include <QMouseEvent>
 #include <QDebug>
+#include <QRegularExpression>
+
+
+
 
 // Кастомный виджет ячейки с поддержкой кликов
 class ClickableFrame : public QFrame
@@ -158,7 +162,10 @@ void MainWindow::showConfigDialog()
         }
     }
 }
-
+void MainWindow::updateTemperatureGauges()
+{
+    // Пока ничего не делаем, или потом сюда добавим обновление спидометров
+}
 QWidget* MainWindow::createCellWidget(const CellInfo& cellInfo, int colIndex, int cellIndex, const QList<int>& parentPath)
 {
 
@@ -193,13 +200,20 @@ QWidget* MainWindow::createCellWidget(const CellInfo& cellInfo, int colIndex, in
     if (!displayValue.isEmpty() && !cellInfo.unit.isEmpty()) {
         displayValue += " " + cellInfo.unit;
     }
-    
-    if (!displayValue.isEmpty()) {
-        QLabel* valueLabel = new QLabel(displayValue);
-        valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        mainContentLayout->addWidget(valueLabel);
-    }
-    
+if (cellInfo.content.contains("Температура", Qt::CaseInsensitive)) {
+    TemperatureGauge *tempGauge = new TemperatureGauge;
+    QString valStr = cellInfo.value;
+valStr.remove(QRegularExpression("[^\\d.-]")); // оставляем цифры и точку
+bool ok;
+double temp = valStr.toDouble(&ok);
+if (ok) tempGauge->setTemperature(temp);
+
+mainContentLayout->addWidget(tempGauge, 0, Qt::AlignRight);
+} else if (!displayValue.isEmpty()) {
+    QLabel* valueLabel = new QLabel(displayValue);
+    valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    mainContentLayout->addWidget(valueLabel);
+}
     cellLayout->addLayout(mainContentLayout);
     
     // Если есть подъячейки, отображаем их ВЕРТИКАЛЬНО
@@ -262,7 +276,14 @@ QWidget* MainWindow::createSubCellWidget(const CellInfo& cellInfo, int colIndex,
         displayValue += " " + cellInfo.unit;
     }
     
-    if (!displayValue.isEmpty()) {
+    if (cellInfo.content.contains("Температура", Qt::CaseInsensitive)) {
+        TemperatureGauge *tempGauge = new TemperatureGauge;
+        bool ok;
+        int temp = cellInfo.value.toInt(&ok);
+        if (ok) tempGauge->setTemperature(temp);
+        subCellLayout->addWidget(tempGauge, 0, Qt::AlignRight);
+    }
+    else if (!displayValue.isEmpty()) {
         QLabel* valueLabel = new QLabel(displayValue);
         valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         subCellLayout->addWidget(valueLabel);
@@ -366,7 +387,14 @@ void MainWindow::createLayoutFromConfig()
         
         // Добавляем колонку в основной layout с растягиванием
         mainLayout->addWidget(columnFrame, 1);
+
+
+
     }
+
+
+
+        updateTemperatureGauges();
 }
 
 void MainWindow::onCellClicked(int col, int cell, const QList<int>& subCellPath)
