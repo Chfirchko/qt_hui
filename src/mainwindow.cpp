@@ -1,4 +1,3 @@
-#include "mainwindow.h"
 #include "tableconfigdialog.h"
 #include "temperaturegause.h"
 #include <QPushButton>
@@ -17,6 +16,7 @@
 #include <QDebug>
 #include <QRegularExpression>
 
+#include "mainwindow.h"
 
 
 

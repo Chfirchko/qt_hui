@@ -70,7 +70,7 @@ protected:
 
     // текст температуры
     p.setPen(Qt::black);
-    p.setFont(QFont("Arial", 12, QFont::Bold));
+    p.setFont(QFont("Arial", 16, QFont::Bold));
     p.drawText(-25, 50, QString::number(temperature) + "°C");
   }
 
