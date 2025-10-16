@@ -256,14 +256,22 @@ CellInfo ConfigManager::cellFromJson(const QJsonObject& json)
 {
     CellInfo cell;
     cell.content = json["content"].toString();
-    
-    // Правильно загружаем value и unit для основной ячейки
+
+    // Правильная загрузка значения value (число или строка)
     if (json.contains("value")) {
-        cell.value = json["value"].toString();
+        QJsonValue val = json["value"];
+        if (val.isString()) {
+            cell.value = val.toString();
+        } else if (val.isDouble()) {
+            cell.value = QString::number(val.toDouble(), 'f', 2); // 2 знака после запятой
+        } else {
+            cell.value = "";
+        }
     } else {
-        cell.value = ""; // Пустая строка если значения нет
+        cell.value = "";
     }
-    
+
+    // Загрузка unit
     if (json.contains("unit")) {
         cell.unit = json["unit"].toString();
     } else {
@@ -276,25 +284,34 @@ CellInfo ConfigManager::cellFromJson(const QJsonObject& json)
     if (json.contains("subCells") && json["subCells"].isArray()) {
         QJsonArray subCellsArray = json["subCells"].toArray();
         qDebug() << "  Найдено подъячеек:" << subCellsArray.size();
-        
+
         for (const QJsonValue& subCellValue : subCellsArray) {
             if (subCellValue.isObject()) {
                 QJsonObject subCellObj = subCellValue.toObject();
                 CellInfo subCell;
                 subCell.content = subCellObj["content"].toString();
-                
+
+                // Правильная загрузка value для подъячейки
                 if (subCellObj.contains("value")) {
-                    subCell.value = subCellObj["value"].toString();
+                    QJsonValue val = subCellObj["value"];
+                    if (val.isString()) {
+                        subCell.value = val.toString();
+                    } else if (val.isDouble()) {
+                        subCell.value = QString::number(val.toDouble(), 'f', 2);
+                    } else {
+                        subCell.value = "";
+                    }
                 } else {
                     subCell.value = "";
                 }
-                
+
+                // Загрузка unit
                 if (subCellObj.contains("unit")) {
                     subCell.unit = subCellObj["unit"].toString();
                 } else {
                     subCell.unit = "";
                 }
-                
+
                 qDebug() << "  Загружена подъячейка:" << subCell.content << "value:" << subCell.value << "unit:" << subCell.unit;
                 cell.subCells.append(subCell);
             }

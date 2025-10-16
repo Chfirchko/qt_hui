@@ -67,6 +67,9 @@ MainWindow::MainWindow(QWidget *parent)
     } else {
         qDebug() << "Используется конфиг по умолчанию";
     }
+    updateTimer = new QTimer(this);
+connect(updateTimer, &QTimer::timeout, this, &MainWindow::refreshData);
+updateTimer->start(1000); // обновление каждую секунду
 }
 
 MainWindow::~MainWindow()
@@ -294,6 +297,80 @@ QWidget* MainWindow::createSubCellWidget(const CellInfo& cellInfo, int colIndex,
     
     return subCellFrame;
 }
+
+void MainWindow::refreshData()
+{
+QString configPath = QCoreApplication::applicationDirPath() + "/../data/config.json";
+if (configManager->loadConfig(configPath)) {
+    updateCellWidgets();
+}
+
+
+
+}
+
+void MainWindow::updateCellWidgets()
+{
+    const QList<ColumnConfig>& columns = configManager->getColumns();
+
+    for (int col = 0; col < mainLayout->count(); ++col) {
+        QWidget* columnWidget = mainLayout->itemAt(col)->widget();
+        if (!columnWidget) continue;
+
+        QVBoxLayout* columnLayout = qobject_cast<QVBoxLayout*>(columnWidget->layout());
+        if (!columnLayout) continue;
+
+        const ColumnConfig& columnConfig = columns[col];
+
+        // Пропускаем первый виджет - это заголовок колонки
+        for (int cellIndex = 0; cellIndex < columnConfig.cells.size(); ++cellIndex) {
+            int widgetIndex = cellIndex + 1;
+            if (widgetIndex >= columnLayout->count()) break;
+
+            QWidget* cellWidget = columnLayout->itemAt(widgetIndex)->widget();
+            if (cellWidget) {
+                updateCellWidget(cellWidget, columnConfig.cells[cellIndex]);
+            }
+        }
+    }
+}
+void MainWindow::updateCellWidget(QWidget* cellWidget, const CellInfo& cellInfo)
+{
+    // Обновляем текстовые QLabel
+    QList<QLabel*> labels = cellWidget->findChildren<QLabel*>();
+    for (QLabel* label : labels) {
+        if (label->alignment() & Qt::AlignRight) {
+            QString displayValue = cellInfo.value;
+            if (!displayValue.isEmpty() && !cellInfo.unit.isEmpty()) {
+                displayValue += " " + cellInfo.unit;
+            }
+            label->setText(displayValue);
+        }
+    }
+
+    // Обновляем TemperatureGauge, если есть
+    QList<TemperatureGauge*> gauges = cellWidget->findChildren<TemperatureGauge*>();
+    for (TemperatureGauge* gauge : gauges) {
+        bool ok;
+        double temp = cellInfo.value.toDouble(&ok);
+        if (ok) gauge->setTemperature(temp);
+    }
+
+    // Рекурсивно обновляем подъячейки
+    QList<QFrame*> subFrames = cellWidget->findChildren<QFrame*>();
+    if (!cellInfo.subCells.isEmpty() && !subFrames.isEmpty()) {
+        QVBoxLayout* subLayout = qobject_cast<QVBoxLayout*>(subFrames[0]->layout());
+        if (!subLayout) return;
+        for (int i = 0; i < cellInfo.subCells.size() && i < subLayout->count(); ++i) {
+            QWidget* subCellWidget = subLayout->itemAt(i)->widget();
+            if (subCellWidget) {
+                updateCellWidget(subCellWidget, cellInfo.subCells[i]);
+            }
+        }
+    }
+}
+
+
 
 void MainWindow::loadConfig()
 {

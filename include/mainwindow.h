@@ -29,6 +29,10 @@ private slots:
     void saveConfig();
     void onCellClicked(int col, int cell, const QList<int>& subCellPath);
         void updateTemperatureGauges();
+    void refreshData();           // слот для обновления данных каждую секунду
+void updateCellWidget(QWidget* cellWidget, const CellInfo& cellInfo); // рекурсивное обновление ячеек
+void updateCellWidgets();     // обновление всех ячеек из конфига
+
 
 private:
     void setupUI();
