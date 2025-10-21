@@ -32,7 +32,7 @@ namespace {
     int g_lastSelectedCell = -1;
     QList<int> g_lastSelectedSubPath;
 
-    // Помощник: формирует ключ для истории по индексам
+    // Помощник: формирует ключ для истории по индексам- DEPRECATED
     QString makeHistoryKey(int col, int cell, int sub = -1) {
         if (col < 0 || cell < 0) return QString();
         if (sub >= 0) {
@@ -232,18 +232,10 @@ QWidget* MainWindow::createCellWidget(const CellInfo& cellInfo, int colIndex, in
     cellLabel->setWordWrap(true);
     mainContentLayout->addWidget(cellLabel, 1);
 
-    // Подготавливаем значение для отображения (если нет value, попытаемся вычислить из subCells)
-    QString displayValue = cellInfo.value;
-    if (displayValue.isEmpty() && !cellInfo.subCells.isEmpty()) {
-        double sum = 0;
-        int count = 0;
-        for (const CellInfo& sc : cellInfo.subCells) {
-            bool ok;
-            double v = sc.value.toDouble(&ok);
-            if (ok) { sum += v; ++count; }
-        }
-        if (count > 0) displayValue = QString::number(sum / count, 'f', 2);
-    }
+QString displayValue = cellInfo.value;
+if (!displayValue.isEmpty() && !cellInfo.unit.isEmpty()) {
+    displayValue += " " + cellInfo.unit;
+}
     if (!displayValue.isEmpty() && !cellInfo.unit.isEmpty()) {
         displayValue += " " + cellInfo.unit;
     }
@@ -397,21 +389,12 @@ void MainWindow::updateCellWidget(QWidget* cellWidget, const CellInfo& cellInfo)
 {
     // 1) Обновляем основной valueLabel (если есть)
     QLabel* valueLabel = cellWidget->findChild<QLabel*>("valueLabel");
-    QString mainDisplay;
 
-    // Если основной value пуст, но есть subCells — усредняем (как отображали при создании)
-    if (!cellInfo.value.isEmpty()) {
-        mainDisplay = cellInfo.value;
-    } else if (!cellInfo.subCells.isEmpty()) {
-        double sum = 0;
-        int count = 0;
-        for (const CellInfo& sc : cellInfo.subCells) {
-            bool ok;
-            double v = sc.value.toDouble(&ok);
-            if (ok) { sum += v; ++count; }
-        }
-        if (count > 0) mainDisplay = QString::number(sum / count, 'f', 2);
-    }
+QString mainDisplay = cellInfo.value;
+if (!mainDisplay.isEmpty() && !cellInfo.unit.isEmpty()) {
+    mainDisplay += " " + cellInfo.unit;
+}
+
 
     if (!mainDisplay.isEmpty() && !cellInfo.unit.isEmpty()) {
         mainDisplay += " " + cellInfo.unit;
@@ -669,16 +652,7 @@ void MainWindow::updateRightPanel()
                 out += QString("Выбрано: %1 / %2\n").arg(col.name, ci.content);
 
                 QString value = ci.value;
-                if (value.isEmpty() && !ci.subCells.isEmpty()) {
-                    // среднее
-                    double sum = 0; int cnt = 0;
-                    for (const CellInfo &s : ci.subCells) {
-                        bool ok; double v = s.value.toDouble(&ok);
-                        if (ok) { sum += v; ++cnt; }
-                    }
-                    if (cnt > 0) value = QString::number(sum / cnt, 'f', 2);
-                }
-                if (!value.isEmpty()) {
+                                if (!value.isEmpty()) {
                     out += QString("Текущее значение: %1\n\n").arg(value);
                 } else {
                     out += QString("\n");
