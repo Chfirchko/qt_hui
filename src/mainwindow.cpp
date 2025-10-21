@@ -17,8 +17,9 @@
 #include <QRegularExpression>
 #include <QMap>
 #include <QStringList>
-
+#include <QSplitter>
 #include "mainwindow.h"
+#include <QDockWidget>
 
 // -------------------------------------------------------------
 // Вспомогательные данные в анонимном пространстве (не трогаем header)
@@ -113,15 +114,18 @@ MainWindow::~MainWindow()
 }
 
 // --------------------- UI setup ---------------------
+
+
 void MainWindow::setupUI()
 {
+    // Центральный виджет
     QWidget *centralWgt = new QWidget(this);
     setCentralWidget(centralWgt);
 
     auto *mainVLayout = new QVBoxLayout(centralWgt);
 
+    // Верхняя панель кнопок
     auto *topPanel = new QHBoxLayout;
-
     configButton = new QPushButton("Настроить разделение", this);
     topPanel->addWidget(configButton);
 
@@ -132,11 +136,12 @@ void MainWindow::setupUI()
     topPanel->addWidget(saveButton);
 
     topPanel->addStretch();
-
     mainVLayout->addLayout(topPanel);
 
-    auto *contentSplitter = new QHBoxLayout;
+    // Основной splitter для колонок
+    QSplitter *mainSplitter = new QSplitter(Qt::Horizontal, centralWgt);
 
+    // Левая часть: scroll area с колонками
     scrollArea = new QScrollArea(this);
     scrollArea->setWidgetResizable(true);
 
@@ -146,21 +151,37 @@ void MainWindow::setupUI()
     mainLayout->setContentsMargins(2, 2, 2, 2);
     scrollArea->setWidget(contentWidget);
 
-    contentSplitter->addWidget(scrollArea, 3);
+    mainSplitter->addWidget(scrollArea);
 
+    mainVLayout->addWidget(mainSplitter);
+
+    // Создаем правую панель как Dock, изначально скрытую
     cellInfoDisplay = new QTextEdit(this);
     cellInfoDisplay->setReadOnly(true);
     cellInfoDisplay->setPlaceholderText("Выберите ячейку для просмотра информации...");
-    cellInfoDisplay->setMaximumWidth(300);
-    contentSplitter->addWidget(cellInfoDisplay, 1);
 
-    mainVLayout->addLayout(contentSplitter);
+    QDockWidget* infoDock = new QDockWidget("Информация о ячейке", this);
+    infoDock->setWidget(cellInfoDisplay);
+    infoDock->setAllowedAreas(Qt::RightDockWidgetArea | Qt::LeftDockWidgetArea);
+    infoDock->setFloating(true); // поверх колонок
+    infoDock->resize(300, 500);
+    infoDock->hide(); // изначально скрыт
 
+    addDockWidget(Qt::RightDockWidgetArea, infoDock);
+
+    // Подключаем кнопки
     connect(configButton, &QPushButton::clicked, this, &MainWindow::showConfigDialog);
     connect(loadButton, &QPushButton::clicked, this, &MainWindow::loadConfig);
     connect(saveButton, &QPushButton::clicked, this, &MainWindow::saveConfig);
 
     createLayoutFromConfig();
+
+    // --- Подключаем клик по ячейкам, чтобы показывать dock ---
+    connect(this, &MainWindow::cellClicked, [infoDock, this]() {
+        infoDock->show(); // показываем dock при выборе ячейки
+        infoDock->raise(); // поверх колонок
+        updateRightPanel(); // обновляем содержимое
+    });
 }
 
 void MainWindow::setupMenu()
@@ -557,47 +578,40 @@ void MainWindow::createLayoutFromConfig()
 // --------------------- Клики и правая панель истории ---------------------
 void MainWindow::onCellClicked(int col, int cell, const QList<int>& subCellPath)
 {
-    qDebug() << "Клик по ячейке:" << col << cell << "путь:" << subCellPath;
-    // сохраняем последний выбранный путь в глобальные переменные
     g_lastSelectedCol = col;
     g_lastSelectedCell = cell;
     g_lastSelectedSubPath = subCellPath;
 
-    // Отображаем информацию о выбранной ячейке (в том числе текущие значения)
-    if (col < configManager->getColumns().size()) {
-        const ColumnConfig column = configManager->getColumns()[col];
-
+    // Отображаем выбранную ячейку
+    const QList<ColumnConfig>& cols = configManager->getColumns();
+    if (col < cols.size()) {
+        const ColumnConfig &column = cols[col];
         const CellInfo* currentCell = nullptr;
         QString pathDescription = QString("Колонка: %1").arg(col + 1);
         QString cellName = "";
 
-        if (subCellPath.size() == 1) {
-            if (cell < column.cells.size()) {
-                currentCell = &column.cells[cell];
-                cellName = currentCell->content;
-                pathDescription += QString(" → Ячейка: %1").arg(cell + 1);
-            }
-        } else {
-            if (subCellPath[0] < column.cells.size()) {
-                currentCell = &column.cells[subCellPath[0]];
-                pathDescription += QString(" → Ячейка: %1").arg(subCellPath[0] + 1);
-                cellName = currentCell->content;
+        if (subCellPath.size() == 1 && cell < column.cells.size()) {
+            currentCell = &column.cells[cell];
+            cellName = currentCell->content;
+            pathDescription += QString(" → Ячейка: %1").arg(cell + 1);
+        } else if (!subCellPath.isEmpty() && subCellPath[0] < column.cells.size()) {
+            currentCell = &column.cells[subCellPath[0]];
+            pathDescription += QString(" → Ячейка: %1").arg(subCellPath[0] + 1);
+            cellName = currentCell->content;
 
-                for (int i = 1; i < subCellPath.size(); i++) {
-                    int subIndex = subCellPath[i];
-                    if (subIndex < currentCell->subCells.size()) {
-                        currentCell = &currentCell->subCells[subIndex];
-                        pathDescription += QString(" → Подъячейка: %1").arg(subIndex + 1);
-                        cellName = currentCell->content;
-                    } else {
-                        break;
-                    }
+            for (int i = 1; i < subCellPath.size(); ++i) {
+                int subIndex = subCellPath[i];
+                if (subIndex < currentCell->subCells.size()) {
+                    currentCell = &currentCell->subCells[subIndex];
+                    pathDescription += QString(" → Подъячейка: %1").arg(subIndex + 1);
+                    cellName = currentCell->content;
                 }
             }
         }
 
         if (currentCell) {
             showCellInfo(pathDescription, cellName, *currentCell);
+            emit cellClicked(); // показываем dock
         }
     }
 }

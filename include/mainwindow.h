@@ -12,6 +12,7 @@
 #include "configmanager.h"
 #include <temperaturegause.h>
 
+#include <QSplitter>
 class QPushButton;
 class QScrollArea;
 class QWidget;
@@ -37,20 +38,21 @@ private slots:
     void updateCellWidgets(); // обновление всех ячеек из конфига
 
 private:
+    QSplitter *mainSplitterLeft;
     void setupUI();
     void clearLayout(QLayout* layout);
     void setupMenu();
     QWidget* createCellWidget(const CellInfo& cellInfo, int colIndex, int cellIndex, const QList<int>& parentPath = QList<int>());
     QWidget* createSubCellWidget(const CellInfo& cellInfo, int colIndex, int subCellIndex, const QList<int>& parentPath);
     void showCellInfo(const QString& pathDescription, const QString& cellName, const CellInfo& cellInfo);
-    void updateRightPanel();  // ✅ добавляем объявление метода
+    void updateRightPanel();  //  добавляем объявление метода
 
     // === UI Элементы ===
     QPushButton *configButton;
     QScrollArea *scrollArea;
     QWidget *contentWidget;
     QHBoxLayout *mainLayout;
-    QVBoxLayout *rightPanel;  // ✅ добавляем панель справа
+    QVBoxLayout *rightPanel;  //  добавляем панель справа
     QTextEdit *cellInfoDisplay;
 
     // === Служебные ===
@@ -59,7 +61,11 @@ private:
     QTimer *updateTimer;
 
     // === Хранилище истории ===
-    QMap<QString, QStringList> savedValues;  // ✅ для накопления всех значений
+    QMap<QString, QStringList> savedValues;
+    QDockWidget *infoDock;
+signals:
+    void cellClicked();
+//  для накопления всех значений
 };
 
 #endif // MAINWINDOW_H
