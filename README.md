@@ -1,4 +1,4 @@
-# HUI
+# HUI - Horoshiy User Interface
 
 ## Сборка через CMake
 
