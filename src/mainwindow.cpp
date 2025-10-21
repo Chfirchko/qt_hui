@@ -252,10 +252,12 @@ if (!displayValue.isEmpty() && !cellInfo.unit.isEmpty()) {
         temperatureGauges.append(tempGauge);
     } else {
         // Создаем value QLabel и даём ему понятное имя (objectName), чтобы найти при обновлении
-        QLabel* valueLabel = new QLabel(displayValue);
-        valueLabel->setObjectName("valueLabel");
-        valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        mainContentLayout->addWidget(valueLabel);
+if (!displayValue.isEmpty()) {
+    QLabel* valueLabel = new QLabel(displayValue);
+    valueLabel->setObjectName("valueLabel");
+    valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    mainContentLayout->addWidget(valueLabel);
+}
     }
 
     cellLayout->addLayout(mainContentLayout);
