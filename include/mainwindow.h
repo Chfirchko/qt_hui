@@ -11,13 +11,12 @@
 #include <QTextEdit>
 #include "configmanager.h"
 #include <temperaturegause.h>
-
+#include "graphwidget.h"
 #include <QSplitter>
 class QPushButton;
 class QScrollArea;
 class QWidget;
 class QLabel;
-
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -47,6 +46,7 @@ private:
     void showCellInfo(const QString& pathDescription, const QString& cellName, const CellInfo& cellInfo);
     void updateRightPanel();  //  добавляем объявление метода
 
+GraphWidget *graphWidget;
     // === UI Элементы ===
     QPushButton *configButton;
     QScrollArea *scrollArea;

@@ -1,5 +1,6 @@
 #include "tableconfigdialog.h"
 #include "temperaturegause.h"
+#include <QRegularExpression>
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -20,6 +21,7 @@
 #include <QSplitter>
 #include "mainwindow.h"
 #include <QDockWidget>
+#include "graphwidget.h"
 
 // -------------------------------------------------------------
 // Вспомогательные данные в анонимном пространстве (не трогаем header)
@@ -155,17 +157,26 @@ void MainWindow::setupUI()
 
     mainVLayout->addWidget(mainSplitter);
 
-    // Создаем правую панель как Dock, изначально скрытую
-    cellInfoDisplay = new QTextEdit(this);
-    cellInfoDisplay->setReadOnly(true);
-    cellInfoDisplay->setPlaceholderText("Выберите ячейку для просмотра информации...");
+// Создаем правую панель как Dock с вкладками
+QTabWidget *tabWidget = new QTabWidget(this);
 
-    QDockWidget* infoDock = new QDockWidget("Информация о ячейке", this);
-    infoDock->setWidget(cellInfoDisplay);
-    infoDock->setAllowedAreas(Qt::RightDockWidgetArea | Qt::LeftDockWidgetArea);
-    infoDock->setFloating(true); // поверх колонок
-    infoDock->resize(300, 500);
-    infoDock->hide(); // изначально скрыт
+// Вкладка "История"
+cellInfoDisplay = new QTextEdit(this);
+cellInfoDisplay->setReadOnly(true);
+cellInfoDisplay->setPlaceholderText("Выберите ячейку для просмотра информации...");
+tabWidget->addTab(cellInfoDisplay, "История");
+
+// Вкладка "График"
+graphWidget = new GraphWidget(this);
+tabWidget->addTab(graphWidget, "График");
+
+// Dock
+infoDock = new QDockWidget("Информация о ячейке", this);
+infoDock->setWidget(tabWidget);
+infoDock->setAllowedAreas(Qt::RightDockWidgetArea);
+infoDock->setMinimumWidth(300);
+addDockWidget(Qt::RightDockWidgetArea, infoDock);
+infoDock->hide(); // скрыт по умолчанию
 
     addDockWidget(Qt::RightDockWidgetArea, infoDock);
 
@@ -177,7 +188,7 @@ void MainWindow::setupUI()
     createLayoutFromConfig();
 
     // --- Подключаем клик по ячейкам, чтобы показывать dock ---
-    connect(this, &MainWindow::cellClicked, [infoDock, this]() {
+    connect(this, &MainWindow::cellClicked, [this]() {
         infoDock->show(); // показываем dock при выборе ячейки
         infoDock->raise(); // поверх колонок
         updateRightPanel(); // обновляем содержимое
@@ -649,16 +660,24 @@ void MainWindow::showCellInfo(const QString& pathDescription, const QString& cel
     cellInfoDisplay->setPlainText(infoText);
 
     // Обновим правую панель, чтобы включить историю + выбранную ячейку (updateRightPanel делает объединение)
+        QVector<double> values;
+    for (const QString &val : savedValues[cellName])
+        values.append(val.toDouble());
+
+    if (!graphWidget) {
+        graphWidget = new GraphWidget(this);
+        rightPanel->addWidget(graphWidget);
+    }
+
+    graphWidget->setData(values, cellName);
     updateRightPanel();
 }
 
-// Формирует и показывает правую панель с историей всех ключей.
-// Если есть "последняя выбранная" ячейка — она будет показана сверху.
 void MainWindow::updateRightPanel()
 {
     QString out;
 
-    // Если есть выбранная ячейка — показываем её кратко сверху
+    // Показ выбранной ячейки
     if (g_lastSelectedCol >= 0 && g_lastSelectedCell >= 0) {
         const QList<ColumnConfig>& cols = configManager->getColumns();
         if (g_lastSelectedCol < cols.size()) {
@@ -667,26 +686,76 @@ void MainWindow::updateRightPanel()
                 const CellInfo &ci = col.cells[g_lastSelectedCell];
                 out += QString("Выбрано: %1 / %2\n").arg(col.name, ci.content);
 
-                QString value = ci.value;
-                                if (!value.isEmpty()) {
-                    out += QString("Текущее значение: %1\n\n").arg(value);
+                if (!ci.value.isEmpty()) {
+                    out += QString("Текущее значение: %1\n\n").arg(ci.value);
                 } else {
-                    out += QString("\n");
+                    out += "\n";
                 }
             }
         }
     }
 
-    // Затем показываем всю историю: ключ -> v1, v2, ...
+    // Печатаем всю историю
     for (auto it = g_history.constBegin(); it != g_history.constEnd(); ++it) {
         const QString &key = it.key();
         const QStringList &vals = it.value();
-        if (vals.isEmpty()) continue;
-        out += QString("%1: %2\n").arg(key, vals.join(", "));
+        if (!vals.isEmpty()) {
+            out += QString("%1: %2\n").arg(key, vals.join(", "));
+        }
+    }
+    cellInfoDisplay->setPlainText(out);
+
+    // Определяем ключ для графика
+    QString key;
+    if (g_lastSelectedCol >= 0 && g_lastSelectedCell >= 0) {
+        if (!g_lastSelectedSubPath.isEmpty() && g_lastSelectedSubPath.size() > 1) {
+            int subIdx = g_lastSelectedSubPath.last();
+            key = makeHistoryKey(g_lastSelectedCol, g_lastSelectedCell, subIdx);
+        } else {
+            key = makeHistoryKey(g_lastSelectedCol, g_lastSelectedCell);
+        }
     }
 
-    cellInfoDisplay->setPlainText(out);
+    if (!key.isEmpty() && g_history.contains(key) && graphWidget) {
+        const QList<ColumnConfig>& cols = configManager->getColumns();
+        QString cellName;
+
+        // Название графика с подячейкой
+        if (g_lastSelectedCol >= 0 && g_lastSelectedCell >= 0) {
+            if (g_lastSelectedCol < cols.size()) {
+                const ColumnConfig &col = cols[g_lastSelectedCol];
+                if (g_lastSelectedCell < col.cells.size()) {
+                    const CellInfo &ci = col.cells[g_lastSelectedCell];
+                    cellName = ci.content;
+
+                    if (!g_lastSelectedSubPath.isEmpty() && g_lastSelectedSubPath.size() > 1) {
+                        int subIdx = g_lastSelectedSubPath.last();
+                        if (subIdx < ci.subCells.size()) {
+                            cellName += " / " + ci.subCells[subIdx].content;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Конвертируем QStringList в QVector<double>, убирая единицы
+        const QStringList &strList = g_history[key];
+        QVector<double> data;
+        data.reserve(strList.size());
+        for (const QString &s : strList) {
+QString cleaned = s;
+cleaned.remove(QRegularExpression("[^\\d\\-.,]")); // оставляем цифры, точки, минусы, запятые
+cleaned.replace(",", "."); // на случай, если десятичный через запятую
+bool ok = false;
+double val = cleaned.toDouble(&ok);
+if (ok) data.append(val);
+        }
+
+        // Передаём данные и название в график
+        graphWidget->setData(data, cellName);
+    }
 }
+
 
 #include "mainwindow.moc"
 
